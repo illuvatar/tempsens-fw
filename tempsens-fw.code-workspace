@@ -4,5 +4,11 @@
 			"path": "."
 		}
 	],
-	"settings": {}
+	"settings": {
+		"C_Cpp.clang_format_fallbackStyle": "{ BasedOnStyle: Google, IndentWidth: 4 }",
+		"files.trimFinalNewlines": true,
+		"html.format.endWithNewline": true,
+		"files.insertFinalNewline": true,
+		"editor.renderFinalNewline": false
+	}
 }
