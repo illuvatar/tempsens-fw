@@ -1,42 +1,112 @@
 #include <Adafruit_BMP280.h>
+#include <Adafruit_MCP23017.h>
 #include <Arduino.h>
 #include <CRC32.h>
 #include <OneWire.h>
 #include <SPI.h>
 #include <Wire.h>
 
+#include "barometric.h"
+#include "eepromstore.h"
 #include "measurement.h"
 #include "pinout.h"
-#include "barometric.h"
+#include "settings.h"
 
+Settings settings;
 OneWire oneWire(GPIO_1WIRE);
 Barometric barometric;
+Adafruit_MCP23017 ioexpander;
+EEPromStore eepromStore(512, ioexpander);
 
+// Todo: replace with own main, there will be no loop, only startup->init->measure->xmit->deep sleep.
 void setup() {
     Serial.begin(115200);
     Wire.begin();  // I2C
+    SPI.begin();
+
+    // 1. init clock, note if running and if there was a powerfail
+    // if running try loading settings from clock sram into settings, if that fails we have an invalid setup still
+
+    //before memory can be initialized we need to init io-expander (unless clock running and power ok of course)
+    // 2. Next step is to initialize memory and read first block (settings) from EEPROM 0 and try that.
+    // If that also fails we need to go into a pure "setup-me" mode.
+
+    ioexpander.begin();  // TODO: Might be possible to ignore this if we were running.
+    ioexpander.digitalWrite(IOEXP_EEPROM0, HIGH);
+    ioexpander.digitalWrite(IOEXP_EEPROM1, HIGH);
+    ioexpander.digitalWrite(IOEXP_EEPROM2, HIGH);
+    ioexpander.digitalWrite(IOEXP_EEPROM3, HIGH);
+    ioexpander.digitalWrite(IOEXP_EEPROM4, HIGH);
+    ioexpander.pinMode(IOEXP_EEPROM0, OUTPUT);
+    ioexpander.pinMode(IOEXP_EEPROM1, OUTPUT);
+    ioexpander.pinMode(IOEXP_EEPROM2, OUTPUT);
+    ioexpander.pinMode(IOEXP_EEPROM3, OUTPUT);
+    ioexpander.pinMode(IOEXP_EEPROM4, OUTPUT);
+    delay(5000);
+    Serial.println("INIT");
+
+    uint8_t buf[EEPROM_PAGESIZE];
+    eepromStore.readPage(buf, 0); // Page 0 is settings
+    if(! settings.setFromBuf(buf)){
+        Serial.println("Failed to load settings from EEPROM, using default settings.");
+        settings.copyToBuf(buf);
+        // TODO: copyToBuf should take boolean to know whether it should clear bytes that are not intended for eeprom
+        eepromStore.writePage(buf,0);
+    }
+
+    // 3. Once we have settings loaded: IF clock is running but there was a powerfail, log that to eeprom
+
+    //note, part of settings SRAM must be reserved for next measurement id / position in EEPROM (should be the same, but perhaps MODULUS total pagecount)
+    // but this value should always be zeroed before storing to EEPROM (there needs to be an exhaustive way of scanning all blocks to find the last ID stored)
+    // on the server-side it has to account for this when receiving IDs
+
+    // 4. If clock is not running, start radio to run NTP to set it before doing any measurements. If NTP fails, sleep for a few minutes and try again.
+
+    // 5. Startup sensors - If clock was running and no powerfail all sensors should have sane settings already.
     barometric.setup();
+
+    // Setup done.
+    delay(5000);
+    Serial.println("Init done.");
 }
 
 void scanAndPrintOneWire(void);
 void runRTCC(void);
 
 void loop() {
+    Serial.println("Trying to communicate with eeprom");
+    uint8_t buf[EEPROM_PAGESIZE];
+    eepromStore.readPage(buf, 0);
+    for (int r = 0; r < 8; r++) {
+        Serial.print("r");
+        Serial.print(r);
+        Serial.print(": ");
+        for (int c = 0; c < 8; c++) {
+            if (buf[(r * 8) + c] < 0x10) Serial.print(".");
+            Serial.print(buf[(r * 8) + c], HEX);
+            Serial.print(" ");
+        }
+        Serial.println();
+    }
+
+    Serial.println("#################################");
+#if 0
     Measurement m;
     barometric.measure(m);
-    Serial.print("Baro: "); 
+    Serial.print("Baro: ");
     Serial.println(m.baropress);
     m.genCrc();
-    if(m.checkCrc()){
+    if (m.checkCrc()) {
         Serial.println("CRC Ok");
     }
+#endif
 
 #if 0
     // Check one-wire
     scanAndPrintOneWire();   
     runRTCC();
 #endif
-    delay(2000);
+    delay(5000);
 }
 
 void scanAndPrintOneWire(void) {

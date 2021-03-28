@@ -9,4 +9,10 @@
 #define GPIO_SPIMOSI  13 // SPI MOSI
 #define GPIO_SPIMISO  12 // SPI MISO
 
+#define IOEXP_EXTPOWR 0
+#define IOEXP_EEPROM0 8
+#define IOEXP_EEPROM1 9
+#define IOEXP_EEPROM2 10
+#define IOEXP_EEPROM3 11
+#define IOEXP_EEPROM4 12
 #endif

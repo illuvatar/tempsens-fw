@@ -10,6 +10,20 @@
 		"html.format.endWithNewline": true,
 		"files.insertFinalNewline": true,
 		"editor.renderFinalNewline": false,
-		"editor.find.seedSearchStringFromSelection": false
+		"editor.find.seedSearchStringFromSelection": false,
+		"files.associations": {
+			"*.tcc": "cpp",
+			"fstream": "cpp",
+			"istream": "cpp",
+			"ostream": "cpp",
+			"sstream": "cpp",
+			"array": "cpp",
+			"deque": "cpp",
+			"list": "cpp",
+			"string": "cpp",
+			"unordered_map": "cpp",
+			"vector": "cpp",
+			"initializer_list": "cpp"
+		}
 	}
 }
