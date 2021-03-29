@@ -2,6 +2,8 @@
 
 #include <CRC32.h>
 
+#include "tools.h"
+
 // We should try to load settings from clock SRAM (64 bytes in total available, just enough for the settings struct)
 Settings::Settings() {}
 Settings::~Settings() {}
@@ -134,21 +136,12 @@ void SettingsStorage::genCrc(void) {
     Serial.println(crc, HEX);
 }
 
-bool checkCrcBuf(uint8_t* buf, uint32_t& crc) {
-    uint32_t crcCheck = CRC32::calculate(buf, sizeof(SettingsStorage) - sizeof(crc));
-    Serial.print("CRC Check: ");
-    Serial.println(crcCheck, HEX);
-    return crc == crcCheck;
-}
-
 bool SettingsStorage::checkCrc(void) {
-    return checkCrcBuf((uint8_t*)this, crc);
+    return checkCrcBuf((uint8_t*)this, sizeof(SettingsStorage));
 }
 
 bool SettingsStorage::setFromBuf(uint8_t* buf) {
-    uint32_t existingCrc = 0;
-    memcpy((uint8_t*)&existingCrc, &buf[sizeof(SettingsStorage) - sizeof(existingCrc)], sizeof(existingCrc));
-    if (!checkCrcBuf(buf, existingCrc)) return false;
+    if (!checkCrcBuf(buf, sizeof(SettingsStorage))) return false;
     memcpy((uint8_t*)this, buf, sizeof(SettingsStorage));
     return true;
 }

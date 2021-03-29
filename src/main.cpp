@@ -10,8 +10,11 @@
 #include "eepromstore.h"
 #include "measurement.h"
 #include "pinout.h"
+#include "rtcc.h"
 #include "settings.h"
+#include "tools.h"
 
+RTCC rtcc;
 Settings settings;
 OneWire oneWire(GPIO_1WIRE);
 Barometric barometric;
@@ -28,6 +31,7 @@ void setup() {
     Serial.print("INIT");
 
     // 1. init clock, note if running and if there was a powerfail
+    rtcc.setup();
 
     // 2. Next step is to initialize memory and read first block (settings) from EEPROM 0.
     // If that fails we need to go into a pure "setup-me" mode.
@@ -60,6 +64,7 @@ void setup() {
         Serial.print(".");
     }
     Serial.println();
+    if (rtcc.running) Serial.println("Clock is running");
 
     // 2.9 Allow settings to be changed.
     if (Serial.available()) {
@@ -84,10 +89,9 @@ void setup() {
     if (settings.store.bmpavail) {
         barometric.setup();
     }
-    if(settings.store.dhtavail){
+    if (settings.store.dhtavail) {
         // TODO: Init DHT
     }
-    
 
     // Setup done.
     delay(5000);
@@ -101,7 +105,8 @@ void loop() {
     Serial.println("Trying to communicate with eeprom");
     uint8_t buf[EEPROM_PAGESIZE];
     eepromStore.readPage(buf, 0);
-    for (int r = 0; r < 8; r++) {
+    serialDumpPage(buf);
+    /*    for (int r = 0; r < 8; r++) {
         Serial.print("r");
         Serial.print(r);
         Serial.print(": ");
@@ -112,8 +117,11 @@ void loop() {
         }
         Serial.println();
     }
-
+*/
     Serial.println("#################################");
+    Serial.print("Next ID: ");
+    Serial.println(rtcc.store.nextId++);
+    rtcc.saveStore();
 #if 0
     Measurement m;
     barometric.measure(m);
@@ -130,7 +138,7 @@ void loop() {
     scanAndPrintOneWire();   
     runRTCC();
 #endif
-    delay(5000);
+    delay(15000);
 }
 
 void scanAndPrintOneWire(void) {
@@ -236,83 +244,4 @@ void printDayOfWeek(Stream &s, uint8_t wday) {
         s.print(days[wday]);
     } else
         s.print("ERROR");
-}
-
-#define RTCBYTES 0x09
-void runRTCC(void) {
-    uint8_t clockBuf[RTCBYTES];
-    Wire.beginTransmission(0x6f);
-    Wire.write(uint8_t(0));
-    Wire.endTransmission();
-
-    // Try reading a byte
-    Wire.requestFrom(0x6f, (uint8_t)RTCBYTES);
-    int received = 0;
-    while (Wire.available()) {
-        received += Wire.readBytes(&(clockBuf[received]), (RTCBYTES - received));
-        Serial.print(".");
-    }
-    Serial.print(" Total ");
-    Serial.print(received, HEX);
-    if (received == RTCBYTES) {
-        Serial.print(" - Data: ");
-        for (int i = 0; i < RTCBYTES; i++) {
-            Serial.print(clockBuf[i], HEX);
-            Serial.print(" ");
-        }
-        if (!(clockBuf[0] & 0x80)) {
-            Wire.beginTransmission(0x6f);
-            Wire.write(0x00);
-            Wire.write(0x81);
-            Wire.endTransmission();
-            Wire.beginTransmission(0x6f);
-            Wire.write(0x01);
-            Wire.write(0x02);
-            Wire.endTransmission();
-            Wire.beginTransmission(0x6f);
-            Wire.write(0x02);
-            Wire.write(0x03);
-            Wire.endTransmission();
-            Wire.beginTransmission(0x6f);
-            Wire.write(0x03);
-            Wire.write(0x0c);
-            Wire.endTransmission();
-            Wire.beginTransmission(0x6f);
-            Wire.write(0x04);
-            Wire.write(0x22);
-            Wire.endTransmission();
-            Wire.beginTransmission(0x6f);
-            Wire.write(0x05);
-            Wire.write(0x03);
-            Wire.endTransmission();
-            Wire.beginTransmission(0x6f);
-            Wire.write(0x06);
-            Wire.write(0x21);
-            Wire.endTransmission();
-            Wire.beginTransmission(0x6f);
-            Wire.write(0x07);
-            Wire.write(0xc0);
-            Wire.endTransmission();
-            Serial.print("  - Enabled Oscillator");
-        } else {
-            /*
-            Wire.beginTransmission(0x6f);
-            Wire.write(0x00);
-            Wire.write(0x02);
-            Wire.endTransmission();
-            */
-        }
-        if (clockBuf[3] & 0x10) {
-            Wire.beginTransmission(0x6f);
-            Wire.write(0x03);
-            Wire.write(clockBuf[3] & ~0x10);
-            Wire.endTransmission();
-            Serial.print("   - Reset powerfail");
-        }
-        if (clockBuf[3] & 0x20) {
-            Serial.print("   - Clock running");
-            digitalWrite(GPIO_DHT, LOW);
-        }
-    }
-    Serial.println();
 }
