@@ -39,7 +39,21 @@ bool EEPromStore::readPage(uint8_t* buf, uint32_t pageNo) {
 
 bool EEPromStore::writePage(uint8_t* buf, uint32_t pageNo) {
     if (pageNo >= this->maxPages) return false;
+    uint8_t chipPin = getChipPin(pageNo);
 
+    SPI.beginTransaction(SPISettings(14000000, MSBFIRST, SPI_MODE0));
+    waitForIdle(chipPin);
+    setWrite(chipPin);
+    ioexpander.digitalWrite(chipPin, LOW);
+    SPI.transfer(EEPROM_CMD_WRITE);
+    SPI.transfer16(getPageStart(pageNo));
+    for (int c = 0; c < EEPROM_PAGESIZE; c++) {
+        SPI.transfer(buf[c]);
+    }
+    ioexpander.digitalWrite(chipPin, HIGH);
+
+    waitForIdle(chipPin);
+    SPI.endTransaction();
     return true;
 }
 
@@ -74,13 +88,11 @@ void EEPromStore::waitForIdle(uint8_t chipPin) {
     uint8_t status = readStatus(chipPin);
     while (status & 0x01) {
         // Chip is currently writing.
-        Serial.println("CHIP IS WRITING.");
-        delay(1000);
+        delay(1);
         status = readStatus(chipPin);
     }
     if (status & 0x02) {
         clearWrite(chipPin);
-        Serial.println("Write was enabled");
     }
 }
 
@@ -91,9 +103,24 @@ uint8_t EEPromStore::readStatus(uint8_t chipPin) {
     status = SPI.transfer(0x00);
     ioexpander.digitalWrite(chipPin, HIGH);
 
-    Serial.print("STATUS ");
-    Serial.println(status, HEX);
     return status;
 }
-void EEPromStore::setWrite(uint8_t chipPin) {}
-void EEPromStore::clearWrite(uint8_t chipPin) {}
+void EEPromStore::setWrite(uint8_t chipPin) {
+    ioexpander.digitalWrite(chipPin, LOW);
+    SPI.transfer(EEPROM_CMD_WREN);
+    ioexpander.digitalWrite(chipPin, HIGH);
+    uint8_t status = readStatus(chipPin);
+    while (!status & 0x01) {
+        delay(10);
+        ioexpander.digitalWrite(chipPin, LOW);
+        SPI.transfer(EEPROM_CMD_WREN);
+        ioexpander.digitalWrite(chipPin, HIGH);
+        status = readStatus(chipPin);
+    }
+}
+
+void EEPromStore::clearWrite(uint8_t chipPin) {
+    ioexpander.digitalWrite(chipPin, LOW);
+    SPI.transfer(EEPROM_CMD_WRDI);
+    ioexpander.digitalWrite(chipPin, HIGH);
+}

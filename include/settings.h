@@ -32,10 +32,11 @@ class Settings {
     ~Settings();
     bool setFromBuf(uint8_t* buf);
     void copyToBuf(uint8_t* buf);
+    bool configure(void);
 
-    private:
     SettingsStorage store;
-};
 
+   private:
+};
 
 #endif
