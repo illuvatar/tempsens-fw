@@ -1,5 +1,6 @@
 #include "eepromstore.h"
 
+#include <Adafruit_MCP23017.h>
 #include <SPI.h>
 
 #include "pinout.h"
@@ -11,8 +12,11 @@
 #define EEPROM_CMD_RDSR 0b00000101
 #define EEPROM_CMD_WRSR 0b00000001
 
-EEPromStore::EEPromStore(uint32_t maxPages, Adafruit_MCP23017& ioexpander) : ioexpander(ioexpander) {
-    this->maxPages = maxPages;
+extern Adafruit_MCP23017 ioexpander;
+
+EEPromStore::EEPromStore() {
+    
+    this->maxPages = EEPROM_PAGESPERCHIP; // Before settings are loaded assume that we have ONE chip
 }
 
 EEPromStore::~EEPromStore() {
@@ -124,3 +128,5 @@ void EEPromStore::clearWrite(uint8_t chipPin) {
     SPI.transfer(EEPROM_CMD_WRDI);
     ioexpander.digitalWrite(chipPin, HIGH);
 }
+
+EEPromStore eepromStore;

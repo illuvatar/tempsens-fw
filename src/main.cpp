@@ -7,6 +7,7 @@
 #include <Wire.h>
 
 #include "barometric.h"
+#include "communication.h"
 #include "eepromstore.h"
 #include "measurement.h"
 #include "pinout.h"
@@ -14,15 +15,15 @@
 #include "settings.h"
 #include "tools.h"
 
-RTCC rtcc;
-Settings settings;
 OneWire oneWire(GPIO_1WIRE);
-Barometric barometric;
 Adafruit_MCP23017 ioexpander;
-EEPromStore eepromStore(EEPROM_PAGESPERCHIP /* Before settings are loaded assume that we have ONE chip */, ioexpander);
+Barometric barometric;
 
 // Todo: replace with own main, there will be no loop, only startup->init->measure->xmit->deep sleep.
 void setup() {
+    bool clockWasRunning = false;
+    bool powerUp = false;
+
     Serial.begin(115200);
     Wire.begin();  // I2C
     SPI.begin();
@@ -31,7 +32,9 @@ void setup() {
     Serial.print("INIT");
 
     // 1. init clock, note if running and if there was a powerfail
-    rtcc.setup();
+    Clock.begin();  // RTCC
+    clockWasRunning = Clock.running;
+    powerUp = Clock.powerfail!=0;
 
     // 2. Next step is to initialize memory and read first block (settings) from EEPROM 0.
     // If that fails we need to go into a pure "setup-me" mode.
@@ -64,7 +67,7 @@ void setup() {
         Serial.print(".");
     }
     Serial.println();
-    if (rtcc.running) Serial.println("Clock is running");
+    if (Clock.running) Serial.println("Clock is running");
 
     // 2.9 Allow settings to be changed.
     if (Serial.available()) {
@@ -78,12 +81,30 @@ void setup() {
     eepromStore.updateMaxPages(settings.store.numeeprom * EEPROM_PAGESPERCHIP);
 
     // 3. Once we have settings loaded: IF clock is running but there was a powerfail, log that to eeprom
+    if (Clock.powerfail) {
+        Serial.print("Power failed:   ");
+        Serial.println(Clock.powerfail);
+        Serial.print("Power returned: ");
+        Serial.println(Clock.powerreturn);
+    }
 
-    //note, part of settings SRAM must be reserved for next measurement id / position in EEPROM (should be the same, but perhaps MODULUS total pagecount)
-    // but this value should always be zeroed before storing to EEPROM (there needs to be an exhaustive way of scanning all blocks to find the last ID stored)
-    // on the server-side it has to account for this when receiving IDs
+    // 3.5 Now is also a great time to check if nextId == 0 -> we need to scan EEPROM storage to find last used id.
 
     // 4. If clock is not running, start radio to run NTP to set it before doing any measurements. If NTP fails, sleep for a few minutes and try again.
+    Comms.begin();
+    time_t ntpnow = Comms.getNtpTime();
+
+    if (!Clock.running) {
+        Clock.setTime(ntpnow);
+    } else {
+        time_t rtcNow = Clock.getTime();
+        int delta = ntpnow - rtcNow;
+        Serial.print("RTC NTP Delta: ");
+        Serial.println(delta);
+        Serial.print("RTC TIME: ");
+        Serial.println(rtcNow);
+        if (delta > 3600 || delta < -3600) Clock.setTime(ntpnow);
+    }
 
     // 5. Startup sensors - If clock was running and no powerfail all sensors should have sane settings already.
     if (settings.store.bmpavail) {
@@ -102,26 +123,7 @@ void scanAndPrintOneWire(void);
 void runRTCC(void);
 
 void loop() {
-    Serial.println("Trying to communicate with eeprom");
-    uint8_t buf[EEPROM_PAGESIZE];
-    eepromStore.readPage(buf, 0);
-    serialDumpPage(buf);
-    /*    for (int r = 0; r < 8; r++) {
-        Serial.print("r");
-        Serial.print(r);
-        Serial.print(": ");
-        for (int c = 0; c < 8; c++) {
-            if (buf[(r * 8) + c] < 0x10) Serial.print("0");
-            Serial.print(buf[(r * 8) + c], HEX);
-            Serial.print(" ");
-        }
-        Serial.println();
-    }
-*/
-    Serial.println("#################################");
-    Serial.print("Next ID: ");
-    Serial.println(rtcc.store.nextId++);
-    rtcc.saveStore();
+    Serial.print("#");
 #if 0
     Measurement m;
     barometric.measure(m);

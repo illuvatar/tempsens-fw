@@ -1,7 +1,11 @@
 #include "measurement.h"
+
 #include <CRC32.h>
 
+#include "eepromstore.h"
+
 Measurement::Measurement() {
+    static_assert(sizeof(Measurement) == EEPROM_PAGESIZE, "Measurement has wrong size.");
     type = TYPE_SENSORREAD;
     id = 0xDEAD;  // Should call settings for next id.
     bits = 0;
@@ -22,15 +26,15 @@ float Measurement::NaN() {
 }
 
 void Measurement::genCrc() {
-    uint32_t newCrc = CRC32::calculate((uint8_t*)this,sizeof(Measurement)-sizeof(crc));
-    crc=newCrc;
+    uint32_t newCrc = CRC32::calculate((uint8_t*)this, sizeof(Measurement) - sizeof(crc));
+    crc = newCrc;
     Serial.print("CRC Generated: ");
     Serial.println(crc, HEX);
 }
 
 bool Measurement::checkCrc() {
-    uint32_t crcCheck = CRC32::calculate((uint8_t*)this,sizeof(Measurement)-sizeof(crc));
+    uint32_t crcCheck = CRC32::calculate((uint8_t*)this, sizeof(Measurement) - sizeof(crc));
     Serial.print("CRC Check: ");
     Serial.println(crcCheck, HEX);
-    return crc==crcCheck;
+    return crc == crcCheck;
 }

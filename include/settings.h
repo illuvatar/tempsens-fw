@@ -19,10 +19,9 @@ class SettingsStorage {
     uint8_t numeeprom;
     uint8_t numtempsens;
     uint8_t numwificreds;
-
-   private:
     uint8_t reserved8[3];
-    uint32_t reserved32[13];
+    uint32_t uuid;
+    uint32_t reserved32[12];
     uint32_t crc;
 };
 
@@ -30,13 +29,14 @@ class Settings {
    public:
     Settings();
     ~Settings();
+    bool configure(void);
     bool setFromBuf(uint8_t* buf);
     void copyToBuf(uint8_t* buf);
-    bool configure(void);
 
     SettingsStorage store;
 
    private:
 };
 
+extern Settings settings;
 #endif

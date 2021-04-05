@@ -1,14 +1,16 @@
 #ifndef EEPROM_H_
 #define EEPROM_H_
-#include <Adafruit_MCP23017.h>
 #include <stdint.h>
 
 #define EEPROM_PAGESPERCHIP 512
 #define EEPROM_PAGESIZE 64
 
+#define EEPROM_FIRST_SENSORPAGE 128
+#define EEPROM_FIRST_WIFIPAGE 16
+
 class EEPromStore {
    public:
-    EEPromStore(uint32_t maxPages, Adafruit_MCP23017& ioexpander);
+    EEPromStore();
     ~EEPromStore();
     bool readPage(uint8_t* buf, uint32_t pageNo);
     bool writePage(uint8_t* buf, uint32_t pageNo);
@@ -23,6 +25,7 @@ class EEPromStore {
     void clearWrite(uint8_t chipPin);
     
     uint32_t maxPages;
-    Adafruit_MCP23017& ioexpander;
 };
+
+extern EEPromStore eepromStore;
 #endif
