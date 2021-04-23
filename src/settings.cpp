@@ -109,7 +109,7 @@ bool Settings::configure(void) {
                         if (eeprombufB[0] == 0xff) continue;  // Invalid setting.
                         Serial.print("    ");
                         if (store.numwificreds < 10) Serial.print(" ");
-                        Serial.print(store.numwificreds);
+                        Serial.print(c);
                         Serial.print(" SSID '");
                         Serial.print((char*)eeprombufA);
                         Serial.println("'");
@@ -180,8 +180,6 @@ bool Settings::configure(void) {
                             case 'w':  // WIFI
                                 if (read < 4) continue;
                                 wifiNum = serialBuffer[2] - '0';
-                                Serial.print(" WIFINUM ");
-                                Serial.println(wifiNum);
 
                                 if (wifiNum > (store.numwificreds + 1)) {
                                     Serial.println("Store WIFI as next available");
@@ -190,13 +188,8 @@ bool Settings::configure(void) {
                                 if (wifiNum == store.numwificreds) {
                                     store.numwificreds++;
                                     settingsChanged = true;
-                                    Serial.println("Adding new cred.");
                                 }
                                 len = read - 4;
-                                Serial.print("   TO STORE: ");
-                                Serial.println(len);
-                                Serial.print("READ: ");
-                                Serial.println(read);
                                 if (len > 64) continue;
                                 switch ((char)serialBuffer[3]) {
                                     case 's':
@@ -240,7 +233,7 @@ bool Settings::configure(void) {
                     Serial.println("Unknown option.");
             }
         } else {
-            // TODO: Should leave settings after a few read timeouts to make sure we boot even if we accidently entered config.
+            // TODO: #1 Should leave settings after a few read timeouts to make sure we boot even if we accidently entered config.
             Serial.println("Didn't read anything.");
         }
 
