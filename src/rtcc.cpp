@@ -6,6 +6,8 @@
 
 #include "pinout.h"
 #include "tools.h"
+#include "eepromstore.h"
+
 
 #define RTCCADDR 0x6f
 

@@ -52,7 +52,7 @@ void setup() {
     ioexpander.pinMode(IOEXP_EEPROM4, OUTPUT);
 
     uint8_t buf[EEPROM_PAGESIZE];
-    eepromStore.readPage(buf, 0);  // Page 0 is settings
+    eepromStore.readPage(buf, EEPROM_SETTINGS_PAGE);  
     if (!settings.setFromBuf(buf)) {
         Serial.println();
         Serial.println("Failed to load settings from EEPROM, using default settings.");

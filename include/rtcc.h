@@ -16,7 +16,8 @@ class RTCCmem {
     uint32_t lastSentId;
     uint32_t lastUsedWifi;
     time_t lastNTPcheck;
-    uint32_t reserved[11];
+    time_t nextNTPcheck;
+    uint32_t reserved[10];
     uint32_t crc;
 };
 

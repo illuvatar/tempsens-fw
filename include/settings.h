@@ -20,7 +20,7 @@ class SettingsStorage {
     uint8_t numtempsens;
     uint8_t numwificreds;
     uint8_t reserved8[3];
-    uint32_t uuid;
+    uint32_t serialno;
     uint32_t reserved32[12];
     uint32_t crc;
 };
@@ -36,6 +36,7 @@ class Settings {
     SettingsStorage store;
 
    private:
+   bool validateSerialNo(uint32_t serial);
 };
 
 extern Settings settings;
