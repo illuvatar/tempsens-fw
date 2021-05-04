@@ -34,7 +34,7 @@ void setup() {
     // 1. init clock, note if running and if there was a powerfail
     Clock.begin();  // RTCC
     clockWasRunning = Clock.running;
-    powerUp = Clock.powerfail!=0;
+    powerUp = Clock.powerfail != 0;
 
     // 2. Next step is to initialize memory and read first block (settings) from EEPROM 0.
     // If that fails we need to go into a pure "setup-me" mode.
@@ -52,7 +52,7 @@ void setup() {
     ioexpander.pinMode(IOEXP_EEPROM4, OUTPUT);
 
     uint8_t buf[EEPROM_PAGESIZE];
-    eepromStore.readPage(buf, EEPROM_SETTINGS_PAGE);  
+    eepromStore.readPage(buf, EEPROM_SETTINGS_PAGE);
     if (!settings.setFromBuf(buf)) {
         Serial.println();
         Serial.println("Failed to load settings from EEPROM, using default settings.");
@@ -60,17 +60,27 @@ void setup() {
         eepromStore.writePage(buf, 0);
     }
 
-    // Delay startup by 5 seconds to allow user to start sending text via serial (TODO: Should only be done on powerup, but then wait much longer)
-    for (int d = 0; d < 5; d++) {
-        if (Serial.available()) break;
-        delay(1000);
-        Serial.print(".");
+    bool forceSetup = false;
+    if (settings.store.serialno == 0) {
+        forceSetup = true;
+    } else {
+        if (!settings.registered && (!settings.urlSet || !settings.registrationTokenSet)) {
+            forceSetup = true;
+        }
     }
-    Serial.println();
-    if (Clock.running) Serial.println("Clock is running");
+
+    // Delay startup by 5 seconds to allow user to start sending text via serial (TODO: Should only be done on powerup, but then wait much longer)
+    if (!forceSetup) {
+        for (int d = 0; d < 5; d++) {
+            if (Serial.available()) break;
+            delay(1000);
+            Serial.print(".");
+        }
+        Serial.println();
+    }
 
     // 2.9 Allow settings to be changed.
-    if (Serial.available()) {
+    if (forceSetup || Serial.available()) {
         if (settings.configure()) {
             Serial.println("Writing settings to EEPROM");
             settings.copyToBuf(buf);
@@ -114,6 +124,16 @@ void setup() {
         // TODO: Init DHT
     }
 
+    if (settings.store.serialno != 0 && settings.urlSet && settings.registrationTokenSet && !settings.registered) {
+        Comms.begin();
+        Comms.registerDevice();
+    }
+
+    if (!settings.registered) {
+        Serial.println("Restarting to retry setting up and registering.");
+        delay(5000);
+        ESP.restart();
+    }
     // Setup done.
     delay(5000);
     Serial.println("Booting");

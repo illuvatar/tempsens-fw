@@ -1,16 +1,19 @@
 #include "communication.h"
 
+#include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
 #include <WiFiUdp.h>
+#include <rBase64.h>
 
 #include "eepromstore.h"
 #include "rtcc.h"
+#include "settings.h"
+#include "tools.h"
 
 // Local helper functions
 void sendNTPpacket(IPAddress& address, WiFiUDP& udp, byte* packetBuffer);
 const int NTP_PACKET_SIZE = 48;  // NTP time stamp is in the first 48 bytes of the message
-
 
 // DST Root CA X3 (Letsencrypt) - Expires Thursday 30 September 2021 14:01:15
 const char DST_ROOT_CA_X3[] PROGMEM = R"EOF(
@@ -75,12 +78,37 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 Communication::Communication() { begun = false; }
 Communication::~Communication() {}
 
-void foo();
-
 void Communication::begin(void) {
     if (begun) return;
+    char baseUrlTemp[65];
     eepromStore.readPage((uint8_t*)ssid, EEPROM_FIRST_WIFIPAGE + 2 * Clock.store.lastUsedWifi);
     eepromStore.readPage((uint8_t*)psk, EEPROM_FIRST_WIFIPAGE + 2 * Clock.store.lastUsedWifi + 1);
+    eepromStore.readPage((uint8_t*)baseUrlTemp, EEPROM_URL_PAGE);
+    baseUrl = String(baseUrlTemp);
+    if (!baseUrl.endsWith("/")) baseUrl += "/";
+    ssl = false;
+    if (baseUrl.startsWith("https://")) {
+        port = 443;
+        ssl = true;
+    } else if (baseUrl.startsWith("http://")) {
+        port = 80;
+    }
+    if (port > 0) {
+        int startOfServer = baseUrl.indexOf(':') + 3;
+        int endOfServer = baseUrl.indexOf(':', startOfServer);
+        if (endOfServer < 0) {
+            // No port specified
+            endOfServer = baseUrl.indexOf('/', startOfServer);
+        } else {
+            // Extract port as well
+            int endOfPort = baseUrl.indexOf('/', startOfServer);
+            //parse port as int
+            String portPart = baseUrl.substring(endOfServer + 1, endOfPort);
+            port = portPart.toInt();
+        }
+        server = baseUrl.substring(startOfServer, endOfServer);
+    }
+
     WiFi.persistent(false);  // Make sure the credentials are NOT stored persistently by the chip as they already are stored in EEPROM.
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, psk);
@@ -94,7 +122,6 @@ void Communication::begin(void) {
     Serial.println("IP address: ");
     Serial.println(WiFi.localIP());
     begun = true;
-    foo();
 }
 
 time_t Communication::getNtpTime() {
@@ -167,43 +194,96 @@ void sendNTPpacket(IPAddress& address, WiFiUDP& udp, byte* packetBuffer) {
     udp.endPacket();
 }
 
-void foo() {
-    Serial.println("TCP TEST");
+bool Communication::registerDevice(void) {
+    char pageBuffer[65];
+
+    eepromStore.readPage((uint8_t*)pageBuffer, EEPROM_REGISTER_SECRET_PAGE);
+    String secretString = String(pageBuffer);
+
+    String query = "{\"serial\":" + String(settings.store.serialno) + ",\"token\":\"" + secretString + "\"}";
+
+    String result = jsonQuery("register", query);
+    Serial.print("Registration result: '");
+    Serial.print(result);
+    Serial.println("'");
+    // {"status":"registered","blen":60,"crc":2482489620,"token":"FaCjf\/WwxYDb9kHkGzOKVOj0iNj9LpCNAPA9\/Lz5BVlzyyUUDw6n+Df+bTpNmmhmhBYYl3lpgy47V6ifFMn3kw=="}
+    DynamicJsonDocument doc(1024);
+    deserializeJson(doc, result);
+    JsonObject obj = doc.as<JsonObject>();
+    if (obj["status"] != "registered") {
+        Serial.println("Registration failed");
+        return false;
+    }
+    String tokenBase64 = obj["token"];
+    if (tokenBase64 == NULL) {
+        Serial.println("No token received");
+        return false;
+    }
+    if (tokenBase64.length() > sizeof(registrationBase64)) {
+        Serial.println("Token too long");
+        return false;
+    }
+    tokenBase64.toCharArray(registrationBase64, sizeof(registrationBase64));
+
+    // Decode token
+    int tokenLen = rbase64_decode(pageBuffer, registrationBase64, strlen(registrationBase64));
+
+    Serial.print("Decoded token len: ");
+    Serial.println(tokenLen);
+    pageBuffer[tokenLen] = 0x00;
+
+    if (!checkCrcBuf((uint8_t*)pageBuffer, EEPROM_PAGESIZE)) {
+        Serial.println("Token CRC Failed");
+        return false;
+    }
+
+    Serial.println("Registration OK");
+    eepromStore.writePage((uint8_t*)pageBuffer, EEPROM_DEVICE_TOKEN_PAGE);
+    settings.registered = true;
+
+    return true;
+}
+
+String Communication::jsonQuery(String service, String query) {
+    if (port == 0) return "PORTMISSING";
+    Serial.print("Query: '");
+    Serial.print(query);
+    Serial.println("'");
+
     X509List cert(ISRG_Root_X1);
     cert.append(DST_ROOT_CA_X3);
-    
+
     WiFiClientSecure client;
     client.setX509Time(Clock.getTime());
     client.setTrustAnchors(&cert);
-
-    if (!client.connect("tempsens.nu", 443)) {
-        Serial.println("Connection failed");
-        return;
+    String url = baseUrl + "api/" + service + ".php";
+    Serial.print("Url: '");
+    Serial.print(url);
+    Serial.println("'");
+    if (!client.connect(server, port)) {
+        return "Connection Failed";
     }
 
-    String url = "/api/register.php";
-    client.print(String("GET ") + url + " HTTP/1.1\r\n" +
-                 "Host: " + "tempsens.nu" + "\r\n" +
+    String queryLen = String(query.length());
+
+    client.print(String("POST ") + url + " HTTP/1.1\r\n" +
+                 "Host: " + server + "\r\n" +
                  "User-Agent: Tempsens2.0\r\n" +
-                 "Connection: close\r\n\r\n");
+                 "Content-Type: application/json\r\n" +
+                 "Content-Length: " + queryLen + "\r\n" +
+                 "Connection: close\r\n\r\n" +
+                 query + "\r\n");
     while (client.connected()) {
         String line = client.readStringUntil('\n');
-        Serial.println(line);
         if (line == "\r") {
-            Serial.println("Headers received");
             break;
         }
     }
     String line = client.readStringUntil('\n');
-    Serial.println("Reply was:");
-    Serial.println("==========");
-    Serial.println(line);
     line = client.readStringUntil('\n');
-    Serial.println(line);
-    line = client.readStringUntil('\n');
-    Serial.println(line);
-    Serial.println("==========");
-    Serial.println("Closing connection");    
+    line.trim();
+
+    return line;
 }
 
 Communication Comms;

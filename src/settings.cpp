@@ -6,12 +6,29 @@
 #include "eepromstore.h"
 #include "tools.h"
 
-Settings::Settings() {}
+Settings::Settings() {
+    urlSet = false;
+    registrationTokenSet = false;
+    registered = false;
+}
 Settings::~Settings() {}
 
 bool Settings::setFromBuf(uint8_t* buf) {
+    uint8_t eeprombuf[65];
     if (store.setFromBuf(buf)) {
         if (!validateSerialNo(store.serialno)) store.serialno = 0;  // Make sure the serial# is 0 if not valid.
+        eepromStore.readPage(eeprombuf, EEPROM_URL_PAGE);
+        if (!(eeprombuf[0] == 0 || eeprombuf[0] == 0xff)) {
+            urlSet = true;
+        }
+        eepromStore.readPage(eeprombuf, EEPROM_REGISTER_SECRET_PAGE);
+        if (!(eeprombuf[0] == 0 || eeprombuf[0] == 0xff)) {
+            registrationTokenSet = true;
+        }
+        eepromStore.readPage(eeprombuf, EEPROM_DEVICE_TOKEN_PAGE);
+        if (!(eeprombuf[0] == 0 || eeprombuf[0] == 0xff)) {  // TODO: Replace with CRC check once a registration has been tested
+            registered = true;
+        }
         return true;
     }
     return false;
@@ -22,8 +39,8 @@ void Settings::copyToBuf(uint8_t* buf) {
     store.copyToBuf(buf);
 }
 
-/*
-  Settings tree
+/* Configure Settings
+   Settings tree
     w - write settings to eeprom and continue boot
     l - list settings
     s - set
@@ -38,8 +55,6 @@ void Settings::copyToBuf(uint8_t* buf) {
         u Set url (not including /api/) (Max 63 characters)
         t Set registration token secret (Max 63 characters)
 */
-
-// TODO: Add some kind of response after processing each command.
 bool Settings::configure(void) {
     bool setupDone = false;
     bool settingsChanged = false;
@@ -100,6 +115,14 @@ bool Settings::configure(void) {
                         Serial.println((char*)eeprombufA);
                     }
 
+                    Serial.print("Device Registration:     ");
+                    eepromStore.readPage(eeprombufA, EEPROM_DEVICE_TOKEN_PAGE);
+                    if (!(eeprombufA[0] == 0 || eeprombufA[0] == 0xff)) {  // TODO: Replace with CRC check once a registration has been tested
+                        Serial.println("YES");
+                    } else {
+                        Serial.println("NO");
+                    }
+
                     Serial.print("WIFI Credentials:        ");
                     Serial.println(store.numwificreds);
                     for (int c = 0; c < store.numwificreds; c++) {
@@ -118,11 +141,6 @@ bool Settings::configure(void) {
                         Serial.println("'");
                     }
 
-                    eepromStore.readPage(eeprombufA, EEPROM_DEVICE_TOKEN_PAGE);
-                    if (!(eeprombufA[0] == 0 || eeprombufA[0] == 0xff)) {
-                        Serial.print("Device Registration:     ");
-                        Serial.println((char*)eeprombufA);
-                    }
                     break;
                 case 's':
                     if (read > 2) {
@@ -216,12 +234,16 @@ bool Settings::configure(void) {
                             case 'u':  // Url
                                 len = read - 2;
                                 memcpy(eeprombufA, &serialBuffer[2], len);
+                                if (len == 1 && eeprombufA[0] == ' ') eeprombufA[0] = 0x00;
                                 eepromStore.writePage(eeprombufA, EEPROM_URL_PAGE);
+                                if (eeprombufA[0] != 0x00) urlSet = true;
                                 break;
                             case 't':  // registration token secret
                                 len = read - 2;
                                 memcpy(eeprombufA, &serialBuffer[2], len);
+                                if (len == 1 && eeprombufA[0] == ' ') eeprombufA[0] = 0x00;
                                 eepromStore.writePage(eeprombufA, EEPROM_REGISTER_SECRET_PAGE);
+                                if (eeprombufA[0] != 0x00) registrationTokenSet = true;
                                 break;
                             default:
                                 Serial.println("Unknown setting.");

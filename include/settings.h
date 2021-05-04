@@ -34,6 +34,9 @@ class Settings {
     void copyToBuf(uint8_t* buf);
 
     SettingsStorage store;
+    bool urlSet;
+    bool registrationTokenSet;
+    bool registered;
 
    private:
    bool validateSerialNo(uint32_t serial);
