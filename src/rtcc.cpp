@@ -81,6 +81,10 @@ void RTCC::begin(void) {
 
 void RTCC::setTime(time_t newTime) {
     tm* timeinfo = gmtime(&newTime);
+    if(timeinfo->tm_year<100){
+        Serial.println("Refusing to update clock with bad time.");
+        return;
+    }
     Serial.print("Asked to set time to: ");
     Serial.print(timeinfo->tm_year);
     Serial.print("-");
