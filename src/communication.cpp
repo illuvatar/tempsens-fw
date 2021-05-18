@@ -1,5 +1,6 @@
 #include "communication.h"
 
+#define ARDUINOJSON_USE_LONG_LONG 1
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
 #include <WiFiClientSecure.h>
@@ -196,18 +197,17 @@ void sendNTPpacket(IPAddress& address, WiFiUDP& udp, byte* packetBuffer) {
 
 bool Communication::registerDevice(void) {
     char pageBuffer[65];
-
+    StaticJsonDocument<256> doc;
     eepromStore.readPage((uint8_t*)pageBuffer, EEPROM_REGISTER_SECRET_PAGE);
     String secretString = String(pageBuffer);
-
-    String query = "{\"serial\":" + String(settings.store.serialno) + ",\"token\":\"" + secretString + "\"}";
-
+    doc["serial"] = settings.store.serialno;
+    doc["token"] = secretString;
+    String query;
+    serializeJson(doc, query);
     String result = jsonQuery("register", query);
     Serial.print("Registration result: '");
     Serial.print(result);
     Serial.println("'");
-    // {"status":"registered","blen":60,"crc":2482489620,"token":"FaCjf\/WwxYDb9kHkGzOKVOj0iNj9LpCNAPA9\/Lz5BVlzyyUUDw6n+Df+bTpNmmhmhBYYl3lpgy47V6ifFMn3kw=="}
-    DynamicJsonDocument doc(1024);
     deserializeJson(doc, result);
     JsonObject obj = doc.as<JsonObject>();
     if (obj["status"] != "registered") {
@@ -246,9 +246,6 @@ bool Communication::registerDevice(void) {
 
 String Communication::jsonQuery(String service, String query) {
     if (port == 0) return "PORTMISSING";
-    Serial.print("Query: '");
-    Serial.print(query);
-    Serial.println("'");
 
     X509List cert(ISRG_Root_X1);
     cert.append(DST_ROOT_CA_X3);
@@ -257,9 +254,6 @@ String Communication::jsonQuery(String service, String query) {
     client.setX509Time(Clock.getTime());
     client.setTrustAnchors(&cert);
     String url = baseUrl + "api/" + service + ".php";
-    Serial.print("Url: '");
-    Serial.print(url);
-    Serial.println("'");
     if (!client.connect(server, port)) {
         return "Connection Failed";
     }
